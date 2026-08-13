@@ -1,0 +1,90 @@
+# ============================================
+# Docker Compose 生产环境
+# 启动: docker compose --env-file .env up -d --build
+# ============================================
+
+version: "3.8"
+
+services:
+  # ===== 1. PostgreSQL 数据库 =====
+  postgres:
+    image: postgres:16-alpine
+    container_name: contract-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: contract_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: contract_review
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contract_user -d contract_review"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===== 2. ChromaDB 向量数据库（服务端模式）=====
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: contract-chromadb
+    restart: unless-stopped
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    volumes:
+      - chroma_data:/chroma/chroma
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===== 3. FastAPI 后端 =====
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: contract-backend
+    restart: unless-stopped
+    environment:
+      - ENV=production
+      - DATABASE_URL=postgresql://contract_user:${DB_PASSWORD}@postgres:5432/contract_review
+      - CHROMA_SERVER_HOST=chromadb
+      - CHROMA_SERVER_PORT=8000
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_API_BASE=${LLM_API_BASE}
+      - LLM_MODEL=${LLM_MODEL}
+      - JWT_SECRET=${JWT_SECRET}
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - HF_ENDPOINT=${HF_ENDPOINT}
+      - UPLOAD_DIR=/app/uploads
+      - MAX_FILE_SIZE_MB=20
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
+
+  # ===== 4. Next.js 前端 =====
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: contract-frontend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - backend
+    ports:
+      - "0.0.0.0:3000:3000"
+
+volumes:
+  pg_data:
+  chroma_data:
+  uploads_data:
+  logs_data:

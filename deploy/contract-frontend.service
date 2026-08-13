@@ -1,0 +1,36 @@
+# ============================================
+# 智能合同审查系统 — 前端 Systemd 服务
+# ============================================
+# 放到服务器: sudo cp this-file /etc/systemd/system/contract-frontend.service
+# 启动:       sudo systemctl start contract-frontend
+# 开机自启:   sudo systemctl enable contract-frontend
+# 查看状态:   sudo systemctl status contract-frontend
+# 查看日志:   sudo journalctl -u contract-frontend -f
+
+[Unit]
+Description=合同审查系统前端 (Next.js)
+After=network.target contract-backend.service
+Wants=contract-backend.service
+
+[Service]
+Type=simple
+# ↓↓↓ 改成你服务器上的实际用户
+User=ubuntu
+# ↓↓↓ 改成你服务器上的实际项目路径
+WorkingDirectory=/home/ubuntu/contract-review/frontend
+# ↓↓↓ Node.js standalone 模式（build 后自动生成 server.js）
+ExecStart=/usr/bin/node /home/ubuntu/contract-review/frontend/server.js
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOSTNAME=127.0.0.1
+
+# 崩溃自动重启
+Restart=always
+RestartSec=5
+
+# 日志输出
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

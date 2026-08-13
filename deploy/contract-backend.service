@@ -1,0 +1,36 @@
+# ============================================
+# 智能合同审查系统 — 后端 Systemd 服务
+# ============================================
+# 放到服务器: sudo cp this-file /etc/systemd/system/contract-backend.service
+# 启动:       sudo systemctl start contract-backend
+# 开机自启:   sudo systemctl enable contract-backend
+# 查看状态:   sudo systemctl status contract-backend
+# 查看日志:   sudo journalctl -u contract-backend -f
+
+[Unit]
+Description=合同审查系统后端 (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+# ↓↓↓ 改成你服务器上的实际用户
+User=ubuntu
+# ↓↓↓ 改成你服务器上的实际项目路径
+WorkingDirectory=/home/ubuntu/contract-review/backend
+# ↓↓↓ 启动命令（venv 里的 uvicorn）
+ExecStart=/home/ubuntu/contract-review/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2
+
+# 环境变量
+Environment=ENV=production
+Environment=HF_ENDPOINT=https://hf-mirror.com
+
+# 崩溃自动重启
+Restart=always
+RestartSec=5
+
+# 日志输出
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+  # PostgreSQL 数据库 —— 存储合同信息、用户数据、审查记录
+  postgres:
+    image: postgres:16-alpine
+    container_name: contract_db
+    environment:
+      POSTGRES_USER: contract_user
+      POSTGRES_PASSWORD: contract_pass_2024
+      POSTGRES_DB: contract_review
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # ChromaDB 向量数据库 —— 存储合同文本的向量，用于 RAG 检索
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: contract_chromadb
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    restart: unless-stopped
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+
+volumes:
+  postgres_data:
+  chroma_data:

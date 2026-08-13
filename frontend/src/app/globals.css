@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 全局样式 */
+body {
+  @apply bg-gray-50 text-gray-900 antialiased;
+}
+
+/* ===== 闪屏开场页动画 ===== */
+@keyframes splash-float {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes splash-progress {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+@keyframes splash-scan {
+  0% { left: -30%; }
+  100% { left: 100%; }
+}
+
+@keyframes splash-pulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+.splash-logo {
+  animation: splash-float 0.7s ease-out both;
+}
+
+.splash-title {
+  animation: splash-float 0.7s ease-out 0.15s both;
+}
+
+.splash-subtitle {
+  animation: splash-float 0.7s ease-out 0.3s both;
+}
+
+.splash-progress-wrap {
+  animation: splash-float 0.7s ease-out 0.45s both;
+}
+
+.splash-progress-bar {
+  animation: splash-progress 1.5s ease-in-out 0.4s both;
+}
+
+.splash-scanline {
+  animation: splash-scan 1.5s linear 0.4s infinite;
+}
+
+.splash-glow {
+  animation: splash-pulse 2.5s ease-in-out infinite;
+}
