@@ -85,8 +85,10 @@ export default function ChatPanel({
           </div>
         ))}
 
-        {/* 加载动画 */}
-        {loading && (
+        {/* 加载动画：等待 AI 首个 token（还没有 assistant 消息）时才显示 */}
+        {loading &&
+          (messages.length === 0 ||
+            messages[messages.length - 1].role !== "assistant") && (
           <div className="flex justify-start">
             <div className="bg-gray-100 rounded-xl px-4 py-3 rounded-bl-md">
               <div className="flex gap-1">

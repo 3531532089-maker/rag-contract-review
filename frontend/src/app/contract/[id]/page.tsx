@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
-import { getContract, reviewContract, getReview, chatWithContract } from "@/lib/api";
+import { getContract, reviewContract, getReview, chatWithContractStream } from "@/lib/api";
 import { isLoggedIn } from "@/lib/auth";
 import RiskGauge from "@/components/RiskGauge";
 import RiskCard from "@/components/RiskCard";
@@ -83,7 +83,7 @@ export default function ContractDetailPage() {
     }
   }
 
-  // 发送聊天消息
+  // 发送聊天消息（SSE 流式：边生成边追加 token）
   async function handleChatSend(question: string) {
     if (!isLoggedIn()) {
       setShowLogin(true);
@@ -96,19 +96,49 @@ export default function ContractDetailPage() {
     setChatError("");
 
     try {
-      const result = await chatWithContract(id, question);
-      const aiMsg: ChatMessage = {
-        role: "assistant",
-        content: result.answer,
-        sources: result.sources,
-      };
-      setChatMessages((prev) => [...prev, aiMsg]);
+      await chatWithContractStream(id, question, {
+        onSources: (sources) => {
+          setChatMessages((prev) => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last && last.role === "assistant") {
+              last.sources = sources;
+            } else {
+              copy.push({ role: "assistant", content: "", sources });
+            }
+            return copy;
+          });
+        },
+        onToken: (token) => {
+          setChatMessages((prev) => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last && last.role === "assistant") {
+              last.content += token;
+            } else {
+              copy.push({ role: "assistant", content: token });
+            }
+            return copy;
+          });
+        },
+        onError: (message) => {
+          setChatError(`AI 回答失败：${message}`);
+        },
+      });
     } catch (err: unknown) {
-      const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string };
-      const detail = axiosErr?.response?.data?.detail || axiosErr?.message || "未知错误";
-      setChatError(`AI 回答失败：${detail}`);
+      const e = err as Error;
+      setChatError(`AI 回答失败：${e?.message || "未知错误"}`);
     } finally {
       setChatLoading(false);
+      // 清理空 AI 气泡（无内容且无引用）
+      setChatMessages((prev) => {
+        const copy = [...prev];
+        const last = copy[copy.length - 1];
+        if (last && last.role === "assistant" && !last.content && !last.sources?.length) {
+          copy.pop();
+        }
+        return copy;
+      });
     }
   }
 

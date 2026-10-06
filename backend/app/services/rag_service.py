@@ -1,6 +1,8 @@
 # RAG 问答服务
 # 核心逻辑：检索相关合同段落 → 组装 Prompt → 调用 LLM 生成回答
 
+import asyncio
+
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -130,3 +132,68 @@ def answer_question(contract_id: str, question: str) -> dict:
         "answer": answer,
         "sources": [c["content"][:300] for c in chunks],
     }
+
+
+async def answer_question_stream(contract_id: str, question: str):
+    """
+    RAG 问答流式版：检索相关段落 → 组装 Prompt → 逐 token 流式生成。
+
+    与 answer_question 的区别：以 SSE 流式返回，边生成边输出 token，
+    先 yield 引用来源（sources），再逐 token yield 内容，最后 yield done。
+
+    yield 事件格式（dict）：
+        {"type": "sources", "sources": [...]}   # 引用来源
+        {"type": "token", "content": "..."}     # 增量 token
+        {"type": "error", "message": "..."}     # 错误信息
+        {"type": "done"}                        # 结束标记
+    """
+    # ===== 第1步：检索（同步，放线程执行避免阻塞事件循环） =====
+    chunks = await asyncio.to_thread(
+        search_similar_chunks, contract_id, question, 4
+    )
+    sources = [c["content"][:300] for c in chunks]
+
+    if not chunks:
+        yield {
+            "type": "token",
+            "content": "未能在合同中找到与您问题相关的内容。请确认合同已正确上传并索引。",
+        }
+        yield {"type": "done"}
+        return
+
+    # 拼接上下文（按相关度排序）
+    context_parts = []
+    for i, chunk in enumerate(chunks):
+        context_parts.append(f"[段落{i+1}] (相关度: {chunk['relevance']})\n{chunk['content']}")
+    context = "\n\n---\n\n".join(context_parts)
+
+    # 先返回引用来源
+    yield {"type": "sources", "sources": sources}
+
+    # ===== 第2步：组装 Prompt =====
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", QA_SYSTEM_PROMPT),
+        ("user", QA_USER_PROMPT),
+    ])
+
+    llm = get_llm()
+    chain = prompt | llm | StrOutputParser()
+
+    # ===== 第3步：流式调用 LLM =====
+    try:
+        async for token in chain.astream({"context": context, "question": question}):
+            if token:
+                yield {"type": "token", "content": token}
+    except Exception as e:
+        error_msg = str(e)
+        if "api_key" in error_msg.lower() or "auth" in error_msg.lower():
+            yield {"type": "error",
+                   "message": "LLM 未配置或 API Key 无效，请检查 LLM_API_KEY 配置。"}
+        elif "timeout" in error_msg.lower() or "connect" in error_msg.lower():
+            yield {"type": "error",
+                   "message": "LLM 服务连接超时，请检查网络连接和 LLM_API_BASE 配置。"}
+        else:
+            yield {"type": "error",
+                   "message": f"AI 回答生成失败，请稍后重试。错误信息: {error_msg[:200]}"}
+    finally:
+        yield {"type": "done"}

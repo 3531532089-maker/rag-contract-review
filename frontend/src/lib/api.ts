@@ -104,3 +104,81 @@ export async function chatWithContract(
   });
   return data;
 }
+
+// ===== AI 问答（SSE 流式） =====
+
+export interface ChatStreamCallbacks {
+  onSources?: (sources: string[]) => void;
+  onToken?: (token: string) => void;
+  onError?: (message: string) => void;
+}
+
+export async function chatWithContractStream(
+  contractId: string,
+  question: string,
+  callbacks: ChatStreamCallbacks
+): Promise<void> {
+  const token = getToken();
+
+  const res = await fetch("/api/chat/stream", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ contract_id: contractId, question }),
+  });
+
+  if (!res.ok || !res.body) {
+    if (res.status === 401) {
+      triggerAuthRequired();
+    }
+    let detail = `请求失败 (${res.status})`;
+    try {
+      const errData = await res.json();
+      if (errData?.detail) detail = errData.detail;
+    } catch {
+      // 忽略解析错误
+    }
+    throw new Error(detail);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE 事件以空行分隔
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+
+    for (const part of parts) {
+      const line = part.trim();
+      if (!line.startsWith("data:")) continue;
+      const payload = line.slice(5).trim();
+      if (!payload) continue;
+      try {
+        const event = JSON.parse(payload) as {
+          type?: string;
+          sources?: string[];
+          content?: string;
+          message?: string;
+        };
+        if (event.type === "sources") {
+          callbacks.onSources?.(event.sources ?? []);
+        } else if (event.type === "token") {
+          callbacks.onToken?.(event.content ?? "");
+        } else if (event.type === "error") {
+          callbacks.onError?.(event.message ?? "未知错误");
+        }
+        // "done" 事件无需处理，循环结束即完成
+      } catch {
+        // 忽略无法解析的行
+      }
+    }
+  }
+}

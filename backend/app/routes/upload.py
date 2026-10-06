@@ -91,8 +91,9 @@ async def upload_contract(
         await f.write(content)
 
     # ===== 第6步：解析文本 =====
+    # 放到线程池执行：OCR 识别扫描件可能需要几分钟，不能阻塞事件循环
     try:
-        result = parse_contract_file(str(save_path))
+        result = await asyncio.to_thread(parse_contract_file, str(save_path))
         contract_text = result["text"]
         page_count = result["page_count"]
         file_type = result["file_type"]

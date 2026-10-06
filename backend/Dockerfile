@@ -3,9 +3,18 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# 安装系统依赖（PyMuPDF 需要的库）
+# 换用清华 apt 镜像（服务器在国内，官方源 deb.debian.org 太慢）
+RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources
+
+# 安装系统依赖（PyMuPDF、onnxruntime、opencv 需要的库）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    libgomp1 \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
 # 先复制依赖文件（利用 Docker 缓存）
