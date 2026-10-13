@@ -15,6 +15,7 @@ LIMITS = {
     "chat": {"max": 10, "window": 60},           # 聊天：每分钟最多10次
     "review": {"max": 5, "window": 60},          # 审查：每分钟最多5次（审查很贵）
     "upload": {"max": 10, "window": 60},         # 上传：每分钟最多10次
+    "settings": {"max": 30, "window": 60},       # 管理设置：每分钟最多30次
 }
 
 

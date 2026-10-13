@@ -68,6 +68,59 @@ export interface ChatResponse {
   sources: string[];
 }
 
+// ===== 聊天会话（多轮对话） =====
+export interface ChatSession {
+  id: string;
+  contract_id: string;
+  title: string | null;
+  created_at: string;
+  message_count: number;
+}
+
+// ===== 会话消息记录（后端返回） =====
+export interface ChatMessageRecord {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources?: string[] | null;
+  created_at: string;
+}
+
+// ===== 会话详情 =====
+export interface SessionDetail {
+  id: string;
+  contract_id: string;
+  title: string | null;
+  created_at: string;
+  messages: ChatMessageRecord[];
+}
+
+// ===== LLM 运行时设置 =====
+export interface LlmSettings {
+  llm_model: string;
+  llm_base_url: string;
+  llm_temperature: number;
+  llm_max_tokens: number;
+  sources: Record<string, "db" | "env">;
+}
+
+// ===== LLM 设置输入（更新 / 测试用，字段均可选） =====
+export interface LlmSettingsInput {
+  llm_model?: string;
+  llm_base_url?: string;
+  llm_temperature?: number;
+  llm_max_tokens?: number;
+}
+
+// ===== LLM 测试连接结果 =====
+export interface LlmTestResult {
+  ok: boolean;
+  elapsed_ms: number;
+  reply?: string;
+  error?: string;
+  model: string;
+}
+
 // ===== 登录 =====
 export interface LoginResponse {
   token: string;

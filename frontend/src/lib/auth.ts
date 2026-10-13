@@ -12,10 +12,12 @@ export function getToken(): string | null {
 
 export function setToken(token: string): void {
   localStorage.setItem(TOKEN_KEY, token);
+  notifyAuthChange();
 }
 
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+  notifyAuthChange();
 }
 
 export function isLoggedIn(): boolean {
@@ -39,4 +41,20 @@ export function triggerAuthRequired(): void {
   // 触发前先清除旧 token，避免重复 401
   clearToken();
   listeners.forEach((cb) => cb());
+}
+
+// ===== 登录状态变化（登录/退出时通知，供页面刷新登录态） =====
+
+type AuthChangeCallback = () => void;
+let authChangeListeners: AuthChangeCallback[] = [];
+
+export function onAuthChange(callback: AuthChangeCallback): () => void {
+  authChangeListeners.push(callback);
+  return () => {
+    authChangeListeners = authChangeListeners.filter((cb) => cb !== callback);
+  };
+}
+
+function notifyAuthChange(): void {
+  authChangeListeners.forEach((cb) => cb());
 }

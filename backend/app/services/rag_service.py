@@ -2,13 +2,14 @@
 # 核心逻辑：检索相关合同段落 → 组装 Prompt → 调用 LLM 生成回答
 
 import asyncio
+from typing import Optional
 
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.messages import HumanMessage, AIMessage
 
-from app.config import LLM_API_KEY, LLM_API_BASE, LLM_MODEL
 from app.services.vector_store import search_similar_chunks
+from app.services.llm_service import get_llm
 
 
 # ===== 问答 Prompt 模板 =====
@@ -33,44 +34,39 @@ QA_USER_PROMPT = """## 合同内容
 请根据上述合同内容回答用户的问题。"""
 
 
-# 全局 LLM 单例（避免每次调用都新建实例）
-_llm = None
+def _build_prompt(history: Optional[list[dict]] = None) -> ChatPromptTemplate:
+    """组装 Prompt：把历史对话作为多轮消息插入，最后跟当前问题。
 
-
-def get_llm():
+    历史消息用 HumanMessage/AIMessage（静态内容）承载，
+    避免历史文本里的 {} 被 LangChain 当成模板变量解析报错。
     """
-    获取大语言模型实例（单例模式）。
-
-    支持任何兼容 OpenAI 接口的服务，包括：
-    - OpenAI 官方
-    - 国内代理
-    - 本地模型（如 Ollama、vLLM）
-    """
-    global _llm
-    if _llm is None:
-        _llm = ChatOpenAI(
-            model=LLM_MODEL,
-            api_key=LLM_API_KEY,
-            base_url=LLM_API_BASE,
-            temperature=0.3,  # 低温度 = 更准确、少发散
-            max_tokens=2000,
-        )
-    return _llm
+    messages: list = [("system", QA_SYSTEM_PROMPT)]
+    for m in history or []:
+        content = m.get("content", "")
+        if not content:
+            continue
+        if m.get("role") == "user":
+            messages.append(HumanMessage(content=content))
+        else:
+            messages.append(AIMessage(content=content))
+    messages.append(("human", QA_USER_PROMPT))
+    return ChatPromptTemplate.from_messages(messages)
 
 
-def answer_question(contract_id: str, question: str) -> dict:
+def answer_question(contract_id: str, question: str, history: Optional[list[dict]] = None) -> dict:
     """
     RAG 问答核心方法。
 
     流程：
         1. 从向量库检索与问题相关的合同段落
-        2. 将段落+问题组装成 Prompt
+        2. 将段落+问题+历史对话组装成 Prompt
         3. 调用 LLM 生成回答
         4. 返回回答 + 引用来源
 
     参数:
         contract_id: 合同ID
         question: 用户的问题
+        history: 历史对话 [{"role":"user"/"assistant","content":"..."}]
 
     返回:
         {"answer": "AI的回答", "sources": ["原文段落1", "原文段落2", ...]}
@@ -92,10 +88,7 @@ def answer_question(contract_id: str, question: str) -> dict:
     context = "\n\n---\n\n".join(context_parts)
 
     # ===== 第2步：组装 Prompt =====
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", QA_SYSTEM_PROMPT),
-        ("user", QA_USER_PROMPT),
-    ])
+    prompt = _build_prompt(history)
 
     # ===== 第3步：调用 LLM =====
     llm = get_llm()
@@ -134,7 +127,7 @@ def answer_question(contract_id: str, question: str) -> dict:
     }
 
 
-async def answer_question_stream(contract_id: str, question: str):
+async def answer_question_stream(contract_id: str, question: str, history: Optional[list[dict]] = None):
     """
     RAG 问答流式版：检索相关段落 → 组装 Prompt → 逐 token 流式生成。
 
@@ -171,10 +164,7 @@ async def answer_question_stream(contract_id: str, question: str):
     yield {"type": "sources", "sources": sources}
 
     # ===== 第2步：组装 Prompt =====
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", QA_SYSTEM_PROMPT),
-        ("user", QA_USER_PROMPT),
-    ])
+    prompt = _build_prompt(history)
 
     llm = get_llm()
     chain = prompt | llm | StrOutputParser()

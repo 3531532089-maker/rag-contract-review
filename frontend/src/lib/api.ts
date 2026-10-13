@@ -9,6 +9,11 @@ import type {
   LoginResponse,
   ContractListResponse,
   ContractDetail,
+  ChatSession,
+  SessionDetail,
+  LlmSettings,
+  LlmSettingsInput,
+  LlmTestResult,
 } from "./types";
 
 // axios 实例
@@ -108,6 +113,7 @@ export async function chatWithContract(
 // ===== AI 问答（SSE 流式） =====
 
 export interface ChatStreamCallbacks {
+  onSession?: (sessionId: string) => void;
   onSources?: (sources: string[]) => void;
   onToken?: (token: string) => void;
   onError?: (message: string) => void;
@@ -116,6 +122,7 @@ export interface ChatStreamCallbacks {
 export async function chatWithContractStream(
   contractId: string,
   question: string,
+  sessionId: string | null,
   callbacks: ChatStreamCallbacks
 ): Promise<void> {
   const token = getToken();
@@ -126,7 +133,11 @@ export async function chatWithContractStream(
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ contract_id: contractId, question }),
+    body: JSON.stringify({
+      contract_id: contractId,
+      question,
+      session_id: sessionId ?? undefined,
+    }),
   });
 
   if (!res.ok || !res.body) {
@@ -164,11 +175,14 @@ export async function chatWithContractStream(
       try {
         const event = JSON.parse(payload) as {
           type?: string;
+          session_id?: string;
           sources?: string[];
           content?: string;
           message?: string;
         };
-        if (event.type === "sources") {
+        if (event.type === "session") {
+          callbacks.onSession?.(event.session_id ?? "");
+        } else if (event.type === "sources") {
           callbacks.onSources?.(event.sources ?? []);
         } else if (event.type === "token") {
           callbacks.onToken?.(event.content ?? "");
@@ -181,4 +195,44 @@ export async function chatWithContractStream(
       }
     }
   }
+}
+
+// ===== 会话管理（多轮对话） =====
+
+export async function listChatSessions(contractId: string): Promise<ChatSession[]> {
+  const { data } = await api.get<ChatSession[]>("/chat/sessions", {
+    params: { contract_id: contractId },
+  });
+  return data;
+}
+
+export async function getChatSession(sessionId: string): Promise<SessionDetail> {
+  const { data } = await api.get<SessionDetail>(`/chat/sessions/${sessionId}`);
+  return data;
+}
+
+export async function deleteChatSession(sessionId: string): Promise<void> {
+  await api.delete(`/chat/sessions/${sessionId}`);
+}
+
+// ===== LLM 运行时设置 =====
+
+export async function getSettings(): Promise<LlmSettings> {
+  const { data } = await api.get<LlmSettings>("/admin/settings");
+  return data;
+}
+
+export async function updateSettings(input: LlmSettingsInput): Promise<LlmSettings> {
+  const { data } = await api.put<LlmSettings>("/admin/settings", input);
+  return data;
+}
+
+export async function testLlm(input?: LlmSettingsInput): Promise<LlmTestResult> {
+  const { data } = await api.post<LlmTestResult>("/admin/settings/test", input ?? {});
+  return data;
+}
+
+export async function resetSettings(): Promise<LlmSettings> {
+  const { data } = await api.post<LlmSettings>("/admin/settings/reset");
+  return data;
 }

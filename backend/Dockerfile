@@ -21,6 +21,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn
 
+# 预下载中文 Embedding 模型到镜像（构建时一次性，用国内镜像站；运行时离线加载、无需联网）
+RUN HF_ENDPOINT=https://hf-mirror.com python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('shibing624/text2vec-base-chinese')"
+
+# 运行时离线加载模型，不再联网下载
+ENV HF_HUB_OFFLINE=1
+
 # 复制应用代码
 COPY . .
 

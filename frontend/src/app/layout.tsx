@@ -89,6 +89,15 @@ export default function RootLayout({
                 </a>
               )}
 
+              {mounted && loggedIn && (
+                <a
+                  href="/admin"
+                  className="text-sm text-gray-500 hover:text-blue-600 transition-colors"
+                >
+                  ⚙️ 管理设置
+                </a>
+              )}
+
               {mounted ? (
                 loggedIn ? (
                   <button

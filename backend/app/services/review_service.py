@@ -4,9 +4,10 @@ import json
 import re
 import logging
 
-from app.config import LLM_API_KEY, LLM_API_BASE, LLM_MODEL, REVIEW_MAX_CHARS
+from app.config import REVIEW_MAX_CHARS
 from app.services.vector_store import search_similar_chunks
-from app.services.rag_service import get_llm
+from app.services.llm_service import build_llm
+from app.services.setting_service import get_effective_llm_config
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
@@ -149,12 +150,11 @@ def review_contract(contract_id: str, contract_text: str) -> dict:
         ("user", REVIEW_USER_PROMPT),
     ])
 
-    # 使用统一的 LLM 单例（审查需要更长的 max_tokens）
-    from langchain_openai import ChatOpenAI
-    llm = ChatOpenAI(
-        model=LLM_MODEL,
-        api_key=LLM_API_KEY,
-        base_url=LLM_API_BASE,
+    # 审查使用可运行时切换的 model/base_url，但保留自己的温度/长度调参
+    cfg = get_effective_llm_config()
+    llm = build_llm(
+        model=cfg["llm_model"],
+        base_url=cfg["llm_base_url"],
         temperature=0.2,
         max_tokens=4000,
     )

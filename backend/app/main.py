@@ -146,8 +146,10 @@ async def health_check():
 
 
 # ===== 注册路由 =====
-from app.routes import upload, review, chat, auth
+from app.routes import upload, review, chat, auth, sessions, settings
 app.include_router(upload.router)
 app.include_router(chat.router)
 app.include_router(review.router)
 app.include_router(auth.router)
+app.include_router(sessions.router)
+app.include_router(settings.router)

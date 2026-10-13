@@ -11,12 +11,6 @@ from pydantic import BaseModel
 # ===== 请求模型（客户端发给服务器的数据）=====
 
 
-class ChatRequest(BaseModel):
-    """发送聊天消息的请求格式"""
-    contract_id: str      # 要问哪个合同
-    question: str          # 用户的问题
-
-
 class ReviewRequest(BaseModel):
     """请求合同审查的格式"""
     contract_id: str
@@ -61,9 +55,3 @@ class ReviewResponse(BaseModel):
     risk_score: float       # 0-100
     summary: str            # 总体评价
     risks: list[RiskItem]   # 风险列表
-
-
-class ChatResponse(BaseModel):
-    """AI 问答响应"""
-    answer: str
-    sources: list[str] = []  # 引用的合同原文片段

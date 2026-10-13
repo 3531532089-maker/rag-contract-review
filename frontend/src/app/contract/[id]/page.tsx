@@ -4,13 +4,22 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
-import { getContract, reviewContract, getReview, chatWithContractStream } from "@/lib/api";
+import {
+  getContract,
+  reviewContract,
+  getReview,
+  chatWithContractStream,
+  listChatSessions,
+  getChatSession,
+  deleteChatSession,
+} from "@/lib/api";
 import { isLoggedIn } from "@/lib/auth";
 import RiskGauge from "@/components/RiskGauge";
 import RiskCard from "@/components/RiskCard";
 import ChatPanel from "@/components/ChatPanel";
+import SessionSidebar from "@/components/SessionSidebar";
 import LoginModal from "@/components/LoginModal";
-import type { ContractDetail, ReviewResponse, ChatMessage } from "@/lib/types";
+import type { ContractDetail, ReviewResponse, ChatMessage, ChatSession } from "@/lib/types";
 
 type Tab = "text" | "review" | "chat";
 
@@ -39,6 +48,8 @@ export default function ContractDetailPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatError, setChatError] = useState("");
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
   // 加载合同详情
   const loadContract = useCallback(async () => {
@@ -65,6 +76,57 @@ export default function ContractDetailPage() {
   useEffect(() => {
     loadContract();
   }, [loadContract]);
+
+  // ===== 会话管理（多轮对话） =====
+  const loadSessions = useCallback(async () => {
+    try {
+      const list = await listChatSessions(id);
+      setSessions(list);
+    } catch {
+      // 加载会话列表失败不阻塞问答
+    }
+  }, [id]);
+
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions]);
+
+  // 选中会话 → 拉取历史消息
+  async function handleSelectSession(sessionId: string) {
+    setCurrentSessionId(sessionId);
+    try {
+      const detail = await getChatSession(sessionId);
+      const msgs: ChatMessage[] = detail.messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        sources: m.sources ?? undefined,
+      }));
+      setChatMessages(msgs);
+      setChatError("");
+    } catch {
+      setChatError("会话历史加载失败");
+    }
+  }
+
+  // 新建会话 → 清空当前会话与消息
+  function handleNewSession() {
+    setCurrentSessionId(null);
+    setChatMessages([]);
+    setChatError("");
+  }
+
+  // 删除会话
+  async function handleDeleteSession(sessionId: string) {
+    try {
+      await deleteChatSession(sessionId);
+      if (currentSessionId === sessionId) {
+        handleNewSession();
+      }
+      await loadSessions();
+    } catch {
+      setChatError("删除会话失败");
+    }
+  }
 
   // 触发审查
   async function triggerReview() {
@@ -96,7 +158,11 @@ export default function ContractDetailPage() {
     setChatError("");
 
     try {
-      await chatWithContractStream(id, question, {
+      await chatWithContractStream(id, question, currentSessionId, {
+        onSession: (sessionId) => {
+          setCurrentSessionId(sessionId);
+          loadSessions();
+        },
         onSources: (sources) => {
           setChatMessages((prev) => {
             const copy = [...prev];
@@ -288,22 +354,35 @@ export default function ContractDetailPage() {
 
         {/* AI 问答 — 始终渲染，用 hidden 切换，聊天记录不会丢失 */}
         <div className={activeTab === "chat" ? "" : "hidden"}>
-          <ChatPanel
-            contractId={id}
-            messages={chatMessages}
-            loading={chatLoading}
-            error={chatError}
-            onSend={handleChatSend}
-            onRetry={() => {
-              // 重试最后一条用户消息
-              const lastUser = [...chatMessages].reverse().find((m) => m.role === "user");
-              if (lastUser) {
-                setChatError("");
-                handleChatSend(lastUser.content);
-              }
-            }}
-            onLoginRequired={() => setShowLogin(true)}
-          />
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="w-full md:w-64 md:shrink-0">
+              <SessionSidebar
+                sessions={sessions}
+                currentSessionId={currentSessionId}
+                onSelect={handleSelectSession}
+                onNew={handleNewSession}
+                onDelete={handleDeleteSession}
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <ChatPanel
+                contractId={id}
+                messages={chatMessages}
+                loading={chatLoading}
+                error={chatError}
+                onSend={handleChatSend}
+                onRetry={() => {
+                  // 重试最后一条用户消息
+                  const lastUser = [...chatMessages].reverse().find((m) => m.role === "user");
+                  if (lastUser) {
+                    setChatError("");
+                    handleChatSend(lastUser.content);
+                  }
+                }}
+                onLoginRequired={() => setShowLogin(true)}
+              />
+            </div>
+          </div>
         </div>
       </div>
 
